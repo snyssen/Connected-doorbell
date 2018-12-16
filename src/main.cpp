@@ -6,7 +6,8 @@
  *************************************************************/
 
 #include <Arduino.h>
-
+//#include <ESP8266_Lib.h>
+//#include <BlynkSimpleShieldEsp8266.h>
 #include <SPI.h>
 #include <SD.h>
 
@@ -20,6 +21,8 @@
 const uint8_t button = 8;
 	// SD
 const uint8_t chipSelect = 10;
+  // LED
+const uint8_t led = 2;
 
 // You should get Auth Token in the Blynk App.
 // Go to the Project Settings (nut icon).
@@ -43,23 +46,28 @@ File logFile;
 
   *************************************************************/
 
-// Test si le module répond à la commande AT
-bool testModule()
-{
-  int timeout = 0;
-  logFile.println("Testing Module...");
-  logFile.print("Sending cmd = ");
-  logFile.println("AT");
-  Serial.println("AT");
-  while (1) {
-    if (timeout >= 20)
-      return false;
-    if (Serial.find("OK"))
-      return true;
-    delay(10);
-    timeout++;
+  bool SendCmd(String cmd, int timeout)
+  {
+    int i=0;
+    while(1)
+    {
+      if (logFile) {
+        logFile.print("Sending CMD = ");
+        logFile.println(cmd);
+      }
+      Serial.println(cmd);
+      while(Serial.available())
+      {
+        if(Serial.find("OK"))
+          return true;
+      }
+      delay(timeout);
+      if(i>5)
+        break;
+      i++;
+    }
+    return false;
   }
-}
 
 /*************************************************************
 
@@ -71,6 +79,9 @@ void setup()
 {
   // Connexion du bouton
 	pinMode(button,INPUT);
+  // Connexion de la LED
+  pinMode(led, OUTPUT);
+  digitalWrite(led, LOW);
   // Connexion de la carte SD
 	pinMode(chipSelect, OUTPUT);
   if (!SD.begin()) {
@@ -95,8 +106,8 @@ void setup()
   }
   delay(10);
 
-
-  if (testModule())
+  logFile.println("Testing Module...");
+  if (SendCmd("AT", 100))
     logFile.println("Module responded accordingly !");
   else {
     logFile.println("Module not responding.");
@@ -105,6 +116,7 @@ void setup()
     while (1);
   }
 
+  // Récupère la version du firmware
   logFile.println("Querying module firmware version...");
   logFile.print("Sending cmd = ");
   logFile.println("AT+GMR");
@@ -113,15 +125,74 @@ void setup()
   while (Serial.available()) {
     logFile.print(Serial.read());
   }
+  logFile.println("");
+
+  // ESP8266 en mode Station
+  logFile.println("Setting module to Station mode...");
+  if (SendCmd("AT+CWMODE=1", 100))
+    logFile.println("Set.");
+  else {
+    logFile.println("Something went wrong...");
+    logFile.println("--- End log ---");
+    logFile.close();
+    while (1);
+  }
+
+  // Déconnexion du WiFi
+  logFile.println("Disconnecting from WiFi...");
+  if (SendCmd("AT+CWQAP", 100))
+    logFile.println("Disconnected.");
+  else {
+    logFile.println("Something went wrong...");
+    logFile.println("--- End log ---");
+    logFile.close();
+    while (1);
+  }
+
+  // Connexion au WiFi
+  logFile.println("Connecting to WiFi with credentials: ");
+  logFile.print("\tSSID = ");
+  logFile.println(ssid);
+  logFile.print("\tPWD = ");
+  logFile.println(pass);
+  String cmd = "AT+CWJAP=\"";
+  cmd = cmd + ssid + "\",\"" + pass + "\"";
+  if (SendCmd(cmd, 7000))
+    logFile.println("Connected.");
+  else {
+    logFile.println("Unable to connect.");
+    logFile.println("--- End log ---");
+    logFile.close();
+    while (1);
+  }
+
+  // Récupération de l'adresse IP
+  logFile.println("Receiving IP address...");
+  logFile.print("Sending cmd = ");
+  logFile.println("AT+CIFSR");
+  Serial.println("AT+CIFSR");
+  delay(10);
+  while (Serial.available()) {
+    logFile.print(Serial.read());
+  }
+  logFile.println("");
 
   logFile.println("Connecting to Blynk server...");
   //Blynk.begin(auth, wifi, ssid, pass);
   logFile.println("Setup done !\nClosing file...");
   logFile.println("--- End log ---");
   logFile.close();
+  delay(1000);
 }
 
 void loop()
 {
+  logFile = SD.open("run.log", FILE_WRITE);
+  while (!logFile);
+	logFile.println("--- Begin log ---");
+  digitalWrite(led, HIGH);
   //Blynk.run();
+  logFile.println("--- End log ---");
+  logFile.close();
+  delay(100);
 }
