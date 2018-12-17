@@ -123,7 +123,7 @@ void setup()
   Serial.println("AT+GMR");
   delay(10);
   while (Serial.available()) {
-    logFile.print(Serial.read());
+    logFile.print(Serial.readString());
   }
   logFile.println("");
 
@@ -173,25 +173,27 @@ void setup()
   Serial.println("AT+CIFSR");
   delay(10);
   while (Serial.available()) {
-    logFile.print(Serial.read());
+    logFile.print(Serial.readString());
   }
   logFile.println("");
 
-  logFile.println("Connecting to Blynk server...");
-  //Blynk.begin(auth, wifi, ssid, pass);
   logFile.println("Setup done !\nClosing file...");
   logFile.println("--- End log ---");
   logFile.close();
+  // blink LED pour montrer que le setup est terminé
+  digitalWrite(led, HIGH);
   delay(1000);
+  digitalWrite(led, LOW);
+  // Ouverture des logs post-setup
+
 }
 
 void loop()
 {
+
   logFile = SD.open("run.log", FILE_WRITE);
   while (!logFile);
 	logFile.println("--- Begin log ---");
-  digitalWrite(led, HIGH);
-  //Blynk.run();
   logFile.println("--- End log ---");
   logFile.close();
   delay(100);
