@@ -186,12 +186,8 @@ void setup()
   logFile.println("Receiving IP address...");
   if (SendCmd("AT+CIFSR", 10000))
     logFile.println("IP looks good !");
-    else {
-      logFile.println("Unable to get IP address from DHCP server.");
-      logFile.println("--- End log ---");
-      logFile.close();
-      FatalError();
-    }
+  else
+    logFile.println("Unable to get IP address from DHCP server.\nContinuing...");
 
   logFile.println("Setup done !\nClosing file...");
   logFile.println("--- End log ---");
@@ -207,6 +203,24 @@ void loop()
     logFile = SD.open("run.log", FILE_WRITE);
     while (!logFile);
     logFile.println("--- Begin log ---");
+
+    // Etablissement de la connexion TCP
+    SendCmd("AT+CIPMUX=0", 1000);
+    SendCmd("AT+CIPSTART=\"TCP\",\"192.168.1.6\",1337", 1000);
+
+    // Envoi de la requête
+    String request = "GET /ring HTTP/1.1";
+    SendCmd("AT+CIPSEND=" + String(request.length() + 4), 1000);
+    Serial.println(request);
+    delay(1000);
+    Serial.println("");
+
+    // Réception
+    logFile.println(ReadResponse());
+
+    // Fermeture connexion TCP
+    SendCmd("AT+CIPCLOSE", 200);
+
 
     logFile.println("--- End log ---");
     logFile.close();
