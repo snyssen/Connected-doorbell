@@ -1,0 +1,34 @@
+﻿<!DOCTYPE html>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Connected doorbell</title>
+</head>
+<body>
+	<h1>Push the button on the doorbell to ring it !</h1>
+	<p>Server time: <b id="ServTime"></b></p>
+	<ul id="log"></ul>
+	<script src="http://code.jquery.com/jquery-1.11.1.js"></script>
+	<script src="/socket.io/socket.io.js"></script>
+	<script>
+		var socket = io();
+
+		// Demande l'heure du serveur toutes les secondes
+		setInterval(function () {
+			socket.emit('GetTime');
+		}, 1000);
+
+		// Reçoit l'heure du serveur
+		socket.on('GetTime', function (ServTime) {
+			$('#ServTime').text(ServTime);
+		});
+
+		// Quelqu'un sonne !
+		socket.on('ringing', function (ServTime) {
+			alert('Quelqu\'un a sonné à la porte !');
+			$('#log').append($('<li>').html(ServTime + ': On a sonné à la porte.'));
+		});
+	</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "conn_doorbell_serv.njsproj",
+  "version": "0.0.0",
+  "description": "conn_doorbell_serv.njsproj",
+  "main": "server.js",
+  "author": {
+    "name": ""
+  },
+  "dependencies": {
+    "body-parser": "^1.18.3",
+    "express": "^4.16.4",
+    "morgan": "^1.9.1",
+    "socket.io": "^2.2.0"
+  }
+}
