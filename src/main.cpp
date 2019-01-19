@@ -1,13 +1,12 @@
 /*************************************************************
-  Premiers essais d'utilisation de blynk avec écriture dans un fichier de logs sur carte SD.
+  Sonnette connectée, envoie une requête sur un serveur NodeJS qui prévient avec des sockets les utilisateurs connectés que quelqu'un a sonné à la porte.
+  Ecriture dans un fichier de logs sur carte SD.
   Le projet utilise un Atmega328 comme µC principal, et un ESP8266 comme shield wifi.
 
   Copyright 2018 Nyssen Simon
  *************************************************************/
 
 #include <Arduino.h>
-//#include <ESP8266_Lib.h>
-//#include <BlynkSimpleShieldEsp8266.h>
 #include <SPI.h>
 #include <SD.h>
 
@@ -24,19 +23,15 @@ const uint8_t chipSelect = 10;
   // LED
 const uint8_t led = 2;
 
-// You should get Auth Token in the Blynk App.
-// Go to the Project Settings (nut icon).
-char auth[] = "121980e911c747f8802b79d8271f451d";
-
 // Your WiFi credentials.
 // Set password to "" for open networks.
-char ssid[] = "Condroz-C15-FO";
-char pass[] = "condrozc152017";
+//char ssid[] = "Condroz-C15-FO";
+//char pass[] = "condrozc152017";
+char ssid[] = "Nyssen's family";
+char pass[] = "bioleux4122";
 
 // Your ESP8266 baud rate:
 #define ESP8266_BAUD 115200
-
-//ESP8266 wifi(&Serial);
 
 File logFile;
 
@@ -46,6 +41,15 @@ File logFile;
 
   *************************************************************/
 
+  // vide le buffer en lisant sans log
+  void EmptyBuffer() {
+    while (Serial.available()) {
+      Serial.read();
+    }
+  }
+
+  // Envoie d'une commande, attend que l'ESP réponde avec OK
+  // Le timeout détermine après combien de temps renvoyer la commande si il n'y a pas de réponse (max 5x)
   bool SendCmd(String cmd, int timeout)
   {
     int i=0;
@@ -58,15 +62,28 @@ File logFile;
       Serial.println(cmd);
       while(Serial.available())
       {
-        if(Serial.find("OK"))
+        if(Serial.find("OK")) {
+          EmptyBuffer();
           return true;
+        }
       }
       delay(timeout);
       if(i>5)
         break;
       i++;
     }
+    EmptyBuffer();
     return false;
+  }
+
+  // Lecture sur le port série, écriture dans le fichier de log
+  String ReadResponse(unsigned int timeout) {
+    unsigned long StartTime = millis();
+    String res = "";
+    while (Serial.available() && (millis() - StartTime) <= timeout) {
+      res += Serial.readString();
+    }
+    return res;
   }
 
 /*************************************************************
@@ -122,10 +139,8 @@ void setup()
   logFile.println("AT+GMR");
   Serial.println("AT+GMR");
   delay(10);
-  while (Serial.available()) {
-    logFile.print(Serial.readString());
-  }
-  logFile.println("");
+  logFile.println(ReadResponse(1000));
+  logFile.println(""); // Saut d'une ligne
 
   // ESP8266 en mode Station
   logFile.println("Setting module to Station mode...");
@@ -165,36 +180,38 @@ void setup()
     logFile.close();
     while (1);
   }
+  delay(100);
 
   // Récupération de l'adresse IP
   logFile.println("Receiving IP address...");
   logFile.print("Sending cmd = ");
   logFile.println("AT+CIFSR");
-  Serial.println("AT+CIFSR");
-  delay(10);
-  while (Serial.available()) {
-    logFile.print(Serial.readString());
-  }
+  String res;
+  do {
+    Serial.println("AT+CIFSR");
+    res = ReadResponse(1000);
+    logFile.println(res);
+    delay(200);
+  } while(res.indexOf("OK") < 0); // Le module répond "busy" si il n'a pas fini avec la commande précédente
   logFile.println("");
 
   logFile.println("Setup done !\nClosing file...");
   logFile.println("--- End log ---");
   logFile.close();
-  // blink LED pour montrer que le setup est terminé
+  // On allume la LED pour montrer que le setup est terminé
   digitalWrite(led, HIGH);
-  delay(1000);
-  digitalWrite(led, LOW);
-  // Ouverture des logs post-setup
-
 }
 
 void loop()
 {
-
-  logFile = SD.open("run.log", FILE_WRITE);
-  while (!logFile);
-	logFile.println("--- Begin log ---");
-  logFile.println("--- End log ---");
-  logFile.close();
-  delay(100);
+  if (!digitalRead(button)) {
+    digitalWrite(led, LOW);
+    logFile = SD.open("run.log", FILE_WRITE);
+    while (!logFile);
+  	logFile.println("--- Begin log ---");
+    logFile.println("--- End log ---");
+    logFile.close();
+    delay(100);
+    digitalWrite(led, HIGH);
+  }
 }
