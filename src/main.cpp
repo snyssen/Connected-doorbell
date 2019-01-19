@@ -143,12 +143,6 @@ void setup()
     }
   }
 
-  // Récupère la version du firmware
-  logFile.println("Querying module firmware version...");
-  logFile.print("Sending cmd = ");
-  logFile.println("AT+GMR");
-  SendCmd("AT+GMR", 1000);
-
   // ESP8266 en mode Station
   logFile.println("Setting module to Station mode...");
   if (SendCmd("AT+CWMODE=1", 300))
@@ -190,9 +184,7 @@ void setup()
 
   // Récupération de l'adresse IP => PEUT PRENDRE BCP DE TEMPS
   logFile.println("Receiving IP address...");
-  logFile.print("Sending cmd = ");
-  logFile.println("AT+CIFSR");
-  if (SendCmd("AT+CIFSR", 5000))
+  if (SendCmd("AT+CIFSR", 10000))
     logFile.println("IP looks good !");
     else {
       logFile.println("Unable to get IP address from DHCP server.");
@@ -215,6 +207,7 @@ void loop()
     logFile = SD.open("run.log", FILE_WRITE);
     while (!logFile);
     logFile.println("--- Begin log ---");
+
     logFile.println("--- End log ---");
     logFile.close();
     delay(100);
