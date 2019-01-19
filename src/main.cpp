@@ -30,8 +30,8 @@ char auth[] = "121980e911c747f8802b79d8271f451d";
 
 // Your WiFi credentials.
 // Set password to "" for open networks.
-char ssid[] = "Nyssen's family";
-char pass[] = "bioleux4122";
+char ssid[] = "Condroz-C15-FO";
+char pass[] = "condrozc152017";
 
 // Your ESP8266 baud rate:
 #define ESP8266_BAUD 115200
