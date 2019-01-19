@@ -16,9 +16,9 @@
 
   *************************************************************/
 // Définition des pins
-	// bouton
+  // bouton
 const uint8_t button = 8;
-	// SD
+  // SD
 const uint8_t chipSelect = 10;
   // LED
 const uint8_t led = 2;
@@ -48,42 +48,47 @@ File logFile;
     }
   }
 
-  // Envoie d'une commande, attend que l'ESP réponde avec OK
-  // Le timeout détermine après combien de temps renvoyer la commande si il n'y a pas de réponse (max 5x)
-  bool SendCmd(String cmd, int timeout)
-  {
-    int i=0;
-    while(1)
-    {
-      if (logFile) {
-        logFile.print("Sending CMD = ");
-        logFile.println(cmd);
-      }
-      Serial.println(cmd);
-      while(Serial.available())
-      {
-        if(Serial.find("OK")) {
-          EmptyBuffer();
-          return true;
-        }
-      }
-      delay(timeout);
-      if(i>5)
-        break;
-      i++;
-    }
-    EmptyBuffer();
-    return false;
-  }
-
   // Lecture sur le port série, écriture dans le fichier de log
-  String ReadResponse(unsigned int timeout) {
-    unsigned long StartTime = millis();
+  String ReadResponse() {
     String res = "";
-    while (Serial.available() && (millis() - StartTime) <= timeout) {
+    while (Serial.available()) {
       res += Serial.readString();
     }
     return res;
+  }
+
+  // Envoie d'une commande, attend que l'ESP réponde avec OK
+  // Renvoie faux si le timeout est atteint sans avoir reçu "OK"
+  bool SendCmd(String cmd, unsigned int timeout)
+  {
+    Serial.println(cmd); // Envoi de la commande
+    String res;
+    unsigned long StartTime = millis();
+    int IsOK;
+    while ((IsOK = res.indexOf("OK")) < 0 && (millis() - StartTime) <= timeout) {
+      res = ReadResponse();
+      if (res.length() > 1) // On évite d'écrire des lignes blanches dans les logs
+        logFile.println(res);
+      if (res.indexOf("busy") > 0) { // La commande précédente n'a pas encore fini
+        delay(500);
+        Serial.println(cmd); // Renvoi de la commande
+        StartTime = millis(); // reset timeout
+      }
+    }
+    logFile.println(""); // Saut d'une ligne
+    if (IsOK < 0) // on est sorti de la boucle par timeout et non par OK
+      return false;
+    return true;
+  }
+
+  // boucle infinie qui fait clignoter la LED en cas d'erreur fatale
+  void FatalError() {
+    while(1) {
+      digitalWrite(led, HIGH);
+      delay(500);
+      digitalWrite(led, LOW);
+      delay(500);
+    }
   }
 
 /*************************************************************
@@ -95,18 +100,18 @@ File logFile;
 void setup()
 {
   // Connexion du bouton
-	pinMode(button,INPUT);
+  pinMode(button,INPUT);
   // Connexion de la LED
   pinMode(led, OUTPUT);
   digitalWrite(led, LOW);
   // Connexion de la carte SD
-	pinMode(chipSelect, OUTPUT);
+  pinMode(chipSelect, OUTPUT);
   if (!SD.begin()) {
-		while(1);
-	}
+    FatalError();
+  }
   logFile = SD.open("setup.log", FILE_WRITE);
   while (!logFile);
-	logFile.println("--- Begin log ---");
+  logFile.println("--- Begin log ---");
 
   // Set ESP8266 baud rate
   logFile.print("Connecting to ESP8266 with baudrate = ");
@@ -119,52 +124,54 @@ void setup()
     logFile.println("Impossible to connect.");
     logFile.println("--- End log ---");
     logFile.close();
-    while (1);
+    FatalError();
   }
   delay(10);
 
+  // Vérification que le module répond à "AT" => PEUT DEMANDER PLUSIEURS ESSAIS
   logFile.println("Testing Module...");
-  if (SendCmd("AT", 100))
-    logFile.println("Module responded accordingly !");
-  else {
-    logFile.println("Module not responding.");
-    logFile.println("--- End log ---");
-    logFile.close();
-    while (1);
+  for (size_t i = 0; i < 6; i++) {
+    if (SendCmd("AT", 500)) {
+      logFile.println("Module responded accordingly !");
+      break;
+    }
+    if (i >= 5) {
+      logFile.println("Module not responding.");
+      logFile.println("--- End log ---");
+      logFile.close();
+      FatalError();
+    }
   }
 
   // Récupère la version du firmware
   logFile.println("Querying module firmware version...");
   logFile.print("Sending cmd = ");
   logFile.println("AT+GMR");
-  Serial.println("AT+GMR");
-  delay(10);
-  logFile.println(ReadResponse(1000));
-  logFile.println(""); // Saut d'une ligne
+  SendCmd("AT+GMR", 1000);
 
   // ESP8266 en mode Station
   logFile.println("Setting module to Station mode...");
-  if (SendCmd("AT+CWMODE=1", 100))
+  if (SendCmd("AT+CWMODE=1", 300))
     logFile.println("Set.");
   else {
     logFile.println("Something went wrong...");
     logFile.println("--- End log ---");
     logFile.close();
-    while (1);
+    FatalError();
   }
 
   // Déconnexion du WiFi
   logFile.println("Disconnecting from WiFi...");
-  if (SendCmd("AT+CWQAP", 100))
+  if (SendCmd("AT+CWQAP", 1000))
     logFile.println("Disconnected.");
   else {
     logFile.println("Something went wrong...");
     logFile.println("--- End log ---");
     logFile.close();
-    while (1);
+    FatalError();
   }
 
-  // Connexion au WiFi
+  // Connexion au WiFi => CETTE COMMANDE DEMANDE BEAUCOUP DE TEMPS
   logFile.println("Connecting to WiFi with credentials: ");
   logFile.print("\tSSID = ");
   logFile.println(ssid);
@@ -172,28 +179,27 @@ void setup()
   logFile.println(pass);
   String cmd = "AT+CWJAP=\"";
   cmd = cmd + ssid + "\",\"" + pass + "\"";
-  if (SendCmd(cmd, 7000))
+  if (SendCmd(cmd, 10000))
     logFile.println("Connected.");
   else {
     logFile.println("Unable to connect.");
     logFile.println("--- End log ---");
     logFile.close();
-    while (1);
+    FatalError();
   }
-  delay(100);
 
-  // Récupération de l'adresse IP
+  // Récupération de l'adresse IP => PEUT PRENDRE BCP DE TEMPS
   logFile.println("Receiving IP address...");
   logFile.print("Sending cmd = ");
   logFile.println("AT+CIFSR");
-  String res;
-  do {
-    Serial.println("AT+CIFSR");
-    res = ReadResponse(1000);
-    logFile.println(res);
-    delay(200);
-  } while(res.indexOf("OK") < 0); // Le module répond "busy" si il n'a pas fini avec la commande précédente
-  logFile.println("");
+  if (SendCmd("AT+CIFSR", 5000))
+    logFile.println("IP looks good !");
+    else {
+      logFile.println("Unable to get IP address from DHCP server.");
+      logFile.println("--- End log ---");
+      logFile.close();
+      FatalError();
+    }
 
   logFile.println("Setup done !\nClosing file...");
   logFile.println("--- End log ---");
@@ -208,7 +214,7 @@ void loop()
     digitalWrite(led, LOW);
     logFile = SD.open("run.log", FILE_WRITE);
     while (!logFile);
-  	logFile.println("--- Begin log ---");
+    logFile.println("--- Begin log ---");
     logFile.println("--- End log ---");
     logFile.close();
     delay(100);
