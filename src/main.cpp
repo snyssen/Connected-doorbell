@@ -139,6 +139,7 @@ File logFile;
       }
     }
     // Tout est OK
+    ReadFor(1000); // On vide le buffer
   }
 
 /*************************************************************
@@ -192,22 +193,24 @@ void loop()
     logFile.println("--- Begin log ---");
 
     // Etablissement de la connexion TCP
-    SendCmd("AT+CIPMUX=0", 1000);
-    SendCmd("AT+CIPSTART=\"TCP\",\"192.168.1.6\",1337", 1000);
+    SendCmd("AT+CIPMUX=0", 5000); // Pas de multiplexage
+    SendCmd("AT+CIPSTART=\"TCP\",\"192.168.1.6\",1337", 5000); // dernier arg ("1") précise qu'on veut activer le keep alive
 
     // Envoi de la requête
-    String request = "GET /ring HTTP/1.1";
-    SendCmd("AT+CIPSEND=" + String(request.length() + 4), 1000);
-    Serial.println(request);
-    delay(1000);
-    Serial.println("");
+    String request = "GET / HTTP/1.1 \\r\\n";
+    // CIPSEND fonctionne en attendant le nombre de bytes indiqués en arg avant d'envoyer le message
+    SendCmd("AT+CIPSEND=" + String(request.length()), 1000);
+    Serial.print(request);
+    logFile.println(request);
+    if (!ReadTil(10000, "SEND OK"))
+      logFile.println("Error sending request !");
 
     // Réception
-    logFile.println(ReadResponse());
+    ReadTil(30000, "data=");
+    ReadFor(5000);
 
     // Fermeture connexion TCP
-    SendCmd("AT+CIPCLOSE", 200);
-
+    SendCmd("AT+CIPCLOSE", 1000);
 
     logFile.println("--- End log ---");
     logFile.close();
