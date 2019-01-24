@@ -41,46 +41,6 @@ File logFile;
 
   *************************************************************/
 
-  // vide le buffer en lisant sans log
-  void EmptyBuffer() {
-    while (Serial.available()) {
-      Serial.read();
-    }
-  }
-
-  // Lecture sur le port série, écriture dans le fichier de log
-  String ReadResponse() {
-    String res = "";
-    while (Serial.available()) {
-      res += Serial.readString();
-    }
-    return res;
-  }
-
-  // Envoie d'une commande, attend que l'ESP réponde avec OK
-  // Renvoie faux si le timeout est atteint sans avoir reçu "OK"
-  bool SendCmd(String cmd, unsigned int timeout)
-  {
-    Serial.println(cmd); // Envoi de la commande
-    String res;
-    unsigned long StartTime = millis();
-    int IsOK;
-    while ((IsOK = res.indexOf("OK")) < 0 && (millis() - StartTime) <= timeout) {
-      res = ReadResponse();
-      if (res.length() > 1) // On évite d'écrire des lignes blanches dans les logs
-        logFile.println(res);
-      if (res.indexOf("busy") > 0) { // La commande précédente n'a pas encore fini
-        delay(500);
-        Serial.println(cmd); // Renvoi de la commande
-        StartTime = millis(); // reset timeout
-      }
-    }
-    logFile.println(""); // Saut d'une ligne
-    if (IsOK < 0) // on est sorti de la boucle par timeout et non par OK
-      return false;
-    return true;
-  }
-
   // boucle infinie qui fait clignoter la LED en cas d'erreur fatale
   void FatalError() {
     while(1) {
@@ -89,6 +49,96 @@ File logFile;
       digitalWrite(led, LOW);
       delay(500);
     }
+  }
+
+  // Lecutre sur le port série
+  String ReadResponse() {
+    String res = "";
+    while (Serial.available()) {
+      res += Serial.readString();
+    }
+    return res;
+  }
+
+  // Permet de vider le buffer tout en gardant une trace de ce qui s'y trouvait
+  // => utilisé au démarrage pour se débarasser des messages du démarrage de l'ESP
+  void ReadFor(unsigned int timeout) {
+    String res;
+    unsigned long StartTime = millis();
+    while ((millis() - StartTime) <= timeout) {
+      res = ReadResponse();
+      if (res.length() > 1) // On évite d'écrire des lignes blanches dans les logs
+        logFile.println(res);
+    }
+  }
+
+  // lit le buffer jusqu'à ce qu'on rencontre le string recherché ou que le timeout soit atteint
+  bool ReadTil(unsigned int timeout, String ToFind) {
+    String res;
+    unsigned long StartTime = millis();
+    int Found = -1;
+    while (Found < 0 && (millis() - StartTime) <= timeout) {
+      res = ReadResponse();
+      if (res.length() > 1) // On évite d'écrire des lignes blanches dans les logs
+        logFile.println(res);
+      Found = res.indexOf(ToFind);
+    }
+    if (Found < 0) {
+      logFile.println("timeout reached !");
+      return false;
+    }
+    return true;
+  }
+
+  // Envoie une commande et attend le OK
+  bool SendCmd(String cmd, unsigned int timeout) {
+    logFile.println("Sending -> " + cmd);
+    Serial.println(cmd);
+    return ReadTil(timeout, "OK");
+  }
+
+  // Vérifie si on est connecté au wifi
+  void ConnectToWifi() {
+    Serial.println("AT+CWJAP?");
+    if (ReadTil(5000, ssid)) { // on vérifie si il renvoie le ssid sur lequel on est censé être connecté
+      // On est déjà connecté au wifi
+      ReadFor(1000); // On vide le buffer
+    }
+    else {
+      // On est pas connecté au wifi
+      // set en ESP en station
+      SendCmd("AT+CWMODE=1", 5000);
+      // Il faudra peut être vider le buffer ici
+      // Tentative de connexion au WiFi
+      String cmd = "AT+CWJAP=\"";
+      cmd = cmd + ssid + "\",\"" + pass + "\"";
+      if (!SendCmd(cmd, 20000)) {
+        // Impossible de se connecter
+        logFile.println("Can't connect to Wifi.");
+        logFile.println("--- End log ---");
+        logFile.close();
+        FatalError();
+      }
+      // Connexion OK
+      ReadFor(1000); // On vide le buffer
+    }
+
+    // Vérif IP
+    for (uint8_t i = 0; i < 4; i++) {
+      Serial.println("AT+CIFSR");
+      if (ReadTil(5000, "+CIFSR:STAIP")) {
+        // On a une IP
+        break;
+      }
+      if (i >= 3) {
+        // On a tjs pas d'IP après 3 essais
+        logFile.println("Can't get IP address");
+        logFile.println("--- End log ---");
+        logFile.close();
+        FatalError();
+      }
+    }
+    // Tout est OK
   }
 
 /*************************************************************
@@ -117,77 +167,14 @@ void setup()
   logFile.print("Connecting to ESP8266 with baudrate = ");
   logFile.println(ESP8266_BAUD);
   Serial.begin(ESP8266_BAUD);
-  delay (10);
-  if (Serial)
-    logFile.println("Connected.");
-  else {
-    logFile.println("Impossible to connect.");
-    logFile.println("--- End log ---");
-    logFile.close();
-    FatalError();
-  }
-  delay(10);
+  while(!Serial);
+  logFile.println("Serial connected !");
 
-  // Vérification que le module répond à "AT" => PEUT DEMANDER PLUSIEURS ESSAIS
-  logFile.println("Testing Module...");
-  for (size_t i = 0; i < 6; i++) {
-    if (SendCmd("AT", 500)) {
-      logFile.println("Module responded accordingly !");
-      break;
-    }
-    if (i >= 5) {
-      logFile.println("Module not responding.");
-      logFile.println("--- End log ---");
-      logFile.close();
-      FatalError();
-    }
-  }
+  // On lit les messages de démarrage de l'ESP
+  ReadFor(10000);
 
-  // ESP8266 en mode Station
-  logFile.println("Setting module to Station mode...");
-  if (SendCmd("AT+CWMODE=1", 300))
-    logFile.println("Set.");
-  else {
-    logFile.println("Something went wrong...");
-    logFile.println("--- End log ---");
-    logFile.close();
-    FatalError();
-  }
-
-  // Déconnexion du WiFi
-  logFile.println("Disconnecting from WiFi...");
-  if (SendCmd("AT+CWQAP", 1000))
-    logFile.println("Disconnected.");
-  else {
-    logFile.println("Something went wrong...");
-    logFile.println("--- End log ---");
-    logFile.close();
-    FatalError();
-  }
-
-  // Connexion au WiFi => CETTE COMMANDE DEMANDE BEAUCOUP DE TEMPS
-  logFile.println("Connecting to WiFi with credentials: ");
-  logFile.print("\tSSID = ");
-  logFile.println(ssid);
-  logFile.print("\tPWD = ");
-  logFile.println(pass);
-  String cmd = "AT+CWJAP=\"";
-  cmd = cmd + ssid + "\",\"" + pass + "\"";
-  if (SendCmd(cmd, 10000))
-    logFile.println("Connected.");
-  else {
-    logFile.println("Unable to connect.");
-    logFile.println("--- End log ---");
-    logFile.close();
-    FatalError();
-  }
-
-  // Récupération de l'adresse IP => PEUT PRENDRE BCP DE TEMPS
-  logFile.println("Receiving IP address...");
-  if (SendCmd("AT+CIFSR", 10000))
-    logFile.println("IP looks good !");
-  else
-    logFile.println("Unable to get IP address from DHCP server.\nContinuing...");
+  // On se connecte au WiFi
+  ConnectToWifi();
 
   logFile.println("Setup done !\nClosing file...");
   logFile.println("--- End log ---");
