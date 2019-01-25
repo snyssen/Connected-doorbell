@@ -197,10 +197,11 @@ void loop()
     SendCmd("AT+CIPSTART=\"TCP\",\"172.16.100.166\",1337", 5000); // dernier arg ("1") précise qu'on veut activer le keep alive
 
     // Envoi de la requête
-    String request = "GET / HTTP/1.1 \\r\\n";
+    String request = "GET /ring HTTP/1.1";
     // CIPSEND fonctionne en attendant le nombre de bytes indiqués en arg avant d'envoyer le message
-    SendCmd("AT+CIPSEND=" + String(request.length()), 1000);
-    Serial.print(request);
+    SendCmd("AT+CIPSEND=" + String(request.length() + 4), 1000);
+    Serial.println(request);
+    Serial.println();
     logFile.println(request);
     if (!ReadTil(10000, "SEND OK"))
       logFile.println("Error sending request !");
