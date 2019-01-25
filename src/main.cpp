@@ -25,10 +25,10 @@ const uint8_t led = 2;
 
 // Your WiFi credentials.
 // Set password to "" for open networks.
-//char ssid[] = "Condroz-C15-FO";
-//char pass[] = "condrozc152017";
-char ssid[] = "Nyssen's family";
-char pass[] = "bioleux4122";
+char ssid[] = "Condroz-C15-FO";
+char pass[] = "condrozc152017";
+//char ssid[] = "Nyssen's family";
+//char pass[] = "bioleux4122";
 
 // Your ESP8266 baud rate:
 #define ESP8266_BAUD 115200
@@ -194,7 +194,7 @@ void loop()
 
     // Etablissement de la connexion TCP
     SendCmd("AT+CIPMUX=0", 5000); // Pas de multiplexage
-    SendCmd("AT+CIPSTART=\"TCP\",\"192.168.1.6\",1337", 5000); // dernier arg ("1") précise qu'on veut activer le keep alive
+    SendCmd("AT+CIPSTART=\"TCP\",\"172.16.100.166\",1337", 5000); // dernier arg ("1") précise qu'on veut activer le keep alive
 
     // Envoi de la requête
     String request = "GET / HTTP/1.1 \\r\\n";
